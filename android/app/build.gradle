@@ -1,0 +1,41 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+    // START: FlutterFire Configuration
+    id 'com.google.gms.google-services'
+    // END: FlutterFire Configuration
+}
+
+android {
+    namespace "com.example.me_chat"
+    compileSdk 35 // Set to your desired compile SDK version
+    ndkVersion "25.1.8937393" // Set to your desired NDK version
+
+    defaultConfig {
+        applicationId "com.example.me_chat"
+        minSdkVersion 23 // Updated to meet firebase_auth requirements
+        targetSdkVersion 34 // Set to your desired target SDK version
+        versionCode 1
+        versionName "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source "../.."
+}
