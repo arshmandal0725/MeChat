@@ -1,15 +1,10 @@
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:me_chat/backend/api.dart';
+import 'package:me_chat/constants.dart';
 import 'package:me_chat/models/message_model.dart';
 import 'package:me_chat/models/user_model.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter/foundation.dart' as foundation;
-
-String formatTime(String timestampString) {
-  final dateTime = DateTime.parse(timestampString);
-  return DateFormat('h:mm a').format(dateTime); // e.g., 5:00 PM
-}
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key, required this.user});
@@ -33,110 +28,104 @@ class _ChatScreenState extends State<ChatScreen> {
     markMessagesAsRead();
   }
 
-  String formatDateTimeFromString(String dateTimeString) {
-    final dateTime = DateTime.parse(dateTimeString);
-    return DateFormat("d MMM h:mm a").format(dateTime);
+  String formatDateTime(String timestamp) {
+    try {
+      final dt = DateTime.tryParse(timestamp);
+      if (dt == null) return '';
+      return DateFormat("d MMM h:mm a").format(dt);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  String formatTime(String timestamp) {
+    try {
+      final dt = DateTime.tryParse(timestamp);
+      if (dt == null) return '';
+      return DateFormat('h:mm a').format(dt);
+    } catch (e) {
+      return '';
+    }
   }
 
   Future<void> markMessagesAsRead() async {
-    try {
-      final querySnapshot = await APIs.firestore
-          .collection('messages')
-          .where('toId', isEqualTo: APIs.currentUser!.uid)
-          .where('fromId', isEqualTo: widget.user.id)
-          .where('read', isEqualTo: '')
-          .get();
+    final query = await APIs.firestore
+        .collection('messages')
+        .where('toId', isEqualTo: APIs.currentUser!.uid)
+        .where('fromId', isEqualTo: widget.user.id)
+        .where('read', isEqualTo: '')
+        .get();
 
-      for (var doc in querySnapshot.docs) {
-        await doc.reference.update({'read': DateTime.now().toString()});
-      }
-    } catch (e) {
-      debugPrint("Error marking messages as read: $e");
+    for (var doc in query.docs) {
+      await doc.reference.update({'read': DateTime.now().toIso8601String()});
     }
   }
 
   void _toggleEmojiPicker() {
-    setState(() {
-      _isEmojiPickerVisible = !_isEmojiPickerVisible;
-    });
+    setState(() => _isEmojiPickerVisible = !_isEmojiPickerVisible);
 
     if (_isEmojiPickerVisible) {
-      _focusNode.unfocus(); // Hide the keyboard
+      _focusNode.unfocus();
     } else {
-      _focusNode.requestFocus(); // Show the keyboard
+      _focusNode.requestFocus();
     }
   }
 
   void _scrollToBottom() {
-    // Scroll to the bottom of the ListView when the screen loads or when a new message is added
     if (_scrollController.hasClients) {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        elevation: 1,
+        iconTheme: IconThemeData(color: primaryColor),
+        backgroundColor: Colors.black,
         title: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
           children: [
             CircleAvatar(
-              backgroundColor: Colors.grey,
-              radius: 23,
+              backgroundColor: Colors.grey.shade800,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(25),
+                borderRadius: BorderRadius.circular(30),
                 child: Image.network(
-                  widget.user.image!,
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(child: CircularProgressIndicator());
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(Icons.person, color: Colors.black);
-                  },
+                  widget.user.image ?? '',
+                  errorBuilder: (ctx, error, stack) =>
+                      const Icon(Icons.person, color: Colors.white),
                 ),
               ),
             ),
-            const SizedBox(width: 15),
+            const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.user.name!,
+                Text(widget.user.name ?? '',
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
+                        color: Colors.white, fontWeight: FontWeight.bold)),
                 StreamBuilder(
                   stream: APIs.firestore
                       .collection('users')
-                      .where("id", isEqualTo: widget.user.id)
+                      .where('id', isEqualTo: widget.user.id)
                       .snapshots(),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const SizedBox.shrink();
-                    }
-
-                    if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                      final data = snapshot.data!.docs[0];
-                      final bool status = data["is_oonline"] ?? false;
-                      final String lastseen =
-                          data["last_active"] ?? "${DateTime.now()}";
-
-                      return Text(
-                        status
-                            ? "Online"
-                            : "last seen on ${formatDateTimeFromString(lastseen)}",
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w300,
-                        ),
-                      );
-                    }
-
-                    return const SizedBox.shrink();
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+                      return const SizedBox();
+                    final user = snapshot.data!.docs.first.data();
+                    final isOnline = user['is_oonline'] ?? false;
+                    final lastActive = user['last_active'] ?? '';
+                    return Text(
+                      isOnline
+                          ? 'Online'
+                          : 'last seen ${formatDateTime(lastActive)}',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 11),
+                    );
                   },
                 )
               ],
@@ -148,51 +137,37 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: StreamBuilder(
-              stream: APIs.firestore.collection("messages").snapshots(),
+              stream: APIs.firestore.collection('messages').snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
-                }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('No messages yet.'));
-                }
-
-                final data = snapshot.data!.docs;
                 messages.clear();
 
-                // Collect the messages from the snapshot
-                for (var doc in data) {
-                  final parts = doc.id.split('__');
-                  if (parts.first == APIs.currentUser!.uid &&
-                          doc["toId"] == widget.user.id ||
-                      parts.first == widget.user.id &&
-                          doc["toId"] == APIs.currentUser!.uid) {
-                    messages.add(Message.fromJson(doc.data()));
+                for (var doc in snapshot.data!.docs) {
+                  final msg = Message.fromJson(doc.data());
+                  if ((msg.fromId == APIs.currentUser!.uid &&
+                          msg.toId == widget.user.id) ||
+                      (msg.fromId == widget.user.id &&
+                          msg.toId == APIs.currentUser!.uid)) {
+                    messages.add(msg);
                   }
                 }
 
-                // Sort messages by the 'sent' timestamp (ascending order)
                 messages.sort((a, b) {
-                  final aTime = DateTime.parse(a.sent);
-                  final bTime = DateTime.parse(b.sent);
-                  return aTime.compareTo(bTime); // Ascending order
+                  final aTime = DateTime.tryParse(a.sent) ?? DateTime.now();
+                  final bTime = DateTime.tryParse(b.sent) ?? DateTime.now();
+                  return aTime.compareTo(bTime);
                 });
 
-                // Scroll to the bottom when messages are loaded or updated
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _scrollToBottom();
-                });
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) => _scrollToBottom());
 
                 return ListView.builder(
                   controller: _scrollController,
+                  padding: const EdgeInsets.all(8),
                   itemCount: messages.length,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                  itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    return TextBox(msj: msg);
-                  },
+                  itemBuilder: (ctx, index) => TextBox(msj: messages[index]),
                 );
               },
             ),
@@ -203,110 +178,67 @@ class _ChatScreenState extends State<ChatScreen> {
                 msjController
                   ..text += emoji.emoji
                   ..selection = TextSelection.fromPosition(
-                    TextPosition(offset: msjController.text.length),
-                  );
-              },
-              onBackspacePressed: () {
-                final text = msjController.text;
-                if (text.isNotEmpty) {
-                  msjController
-                    ..text = text.characters.skipLast(1).toString()
-                    ..selection = TextSelection.fromPosition(
-                      TextPosition(offset: msjController.text.length),
-                    );
-                }
+                      TextPosition(offset: msjController.text.length));
               },
               textEditingController: msjController,
               config: Config(
-                height: 256,
+                height: 250,
                 checkPlatformCompatibility: true,
-                emojiViewConfig: EmojiViewConfig(
-                  emojiSizeMax: 28 *
-                      (foundation.defaultTargetPlatform == TargetPlatform.iOS
-                          ? 1.20
-                          : 1.0),
-                ),
-                viewOrderConfig: const ViewOrderConfig(
-                  top: EmojiPickerItem.categoryBar,
-                  middle: EmojiPickerItem.emojiView,
-                  bottom: EmojiPickerItem.searchBar,
-                ),
-                skinToneConfig: const SkinToneConfig(),
-                categoryViewConfig: const CategoryViewConfig(),
-                bottomActionBarConfig: const BottomActionBarConfig(),
-                searchViewConfig: const SearchViewConfig(),
               ),
             ),
           Container(
-            width: double.infinity,
             color: Colors.black,
-            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             child: Row(
               children: [
                 Expanded(
-                  flex: 5,
-                  child: Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(22),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade900,
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    color: Colors.black,
                     child: Row(
                       children: [
                         IconButton(
-                          onPressed: _toggleEmojiPicker,
                           icon: const Icon(Icons.emoji_emotions,
-                              color: Colors.white),
+                              color: Colors.white70),
+                          onPressed: _toggleEmojiPicker,
                         ),
                         Expanded(
                           child: TextField(
-                            focusNode: _focusNode,
-                            style: TextStyle(color: Colors.white),
                             controller: msjController,
-                            maxLines: null,
+                            focusNode: _focusNode,
+                            style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
-                              hintText: 'Type Something',
-                              hintStyle: TextStyle(color: Colors.white),
+                              hintText: 'Type a message',
+                              hintStyle: TextStyle(color: Colors.white54),
                               border: InputBorder.none,
                             ),
                           ),
                         ),
                         IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.image, color: Colors.white),
-                        ),
-                        IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.camera, color: Colors.white),
+                          icon: const Icon(Icons.send, color: Colors.white70),
+                          onPressed: () {
+                            if (msjController.text.trim().isEmpty) return;
+                            final msg = Message(
+                              fromId: APIs.currentUser!.uid,
+                              toId: widget.user.id!,
+                              message: msjController.text.trim(),
+                              sent: DateTime.now().toIso8601String(),
+                              read: '',
+                              type: 'text',
+                            );
+                            APIs.createMessage(msg);
+                            msjController.clear();
+                          },
                         ),
                       ],
                     ),
                   ),
                 ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                  child: IconButton(
-                    onPressed: () {
-                      if (msjController.text.trim().isEmpty) return;
-                      final _msj = Message(
-                        fromId: APIs.currentUser!.uid,
-                        toId: widget.user.id!,
-                        message: msjController.text.trim(),
-                        sent: DateTime.now().toString(),
-                        read: '',
-                        type: 'text',
-                      );
-                      APIs.createMessage(_msj);
-                      msjController.clear();
-                    },
-                    icon: const Icon(Icons.send, color: Colors.white),
-                  ),
-                )
               ],
             ),
-          )
+          ),
         ],
       ),
     );
@@ -319,69 +251,35 @@ class TextBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return (msj.fromId != APIs.currentUser!.uid)
-        ? Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: const BoxDecoration(
-                        color: Colors.grey,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(22),
-                          topRight: Radius.circular(22),
-                          bottomRight: Radius.circular(22),
-                        ),
-                      ),
-                      child: Text(msj.message),
-                    ),
-                  ],
-                ),
-                Text(formatTime(msj.sent), style: TextStyle(fontSize: 12)),
-              ],
+    final isMe = msj.fromId == APIs.currentUser!.uid;
+    final bgColor = isMe ? Colors.green : Colors.grey.shade800;
+    final textColor = isMe ? Colors.white : Colors.white;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Text(msj.message, style: TextStyle(color: textColor)),
             ),
-          )
-        : Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: const BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(22),
-                          topRight: Radius.circular(22),
-                          bottomLeft: Radius.circular(22),
-                        ),
-                      ),
-                      child: Text(msj.message,
-                          style: TextStyle(color: Colors.white)),
-                    ),
-                  ],
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(formatTime(msj.sent), style: TextStyle(fontSize: 12)),
-                    Image.asset(
-                      (msj.read != "")
-                          ? 'assets/images/seen_tick.png'
-                          : 'assets/images/unseen_tick.png',
-                      scale: 25,
-                    )
-                  ],
-                ),
-              ],
+            const SizedBox(height: 2),
+            Text(
+              DateFormat('h:mm a')
+                  .format(DateTime.tryParse(msj.sent) ?? DateTime.now()),
+              style: const TextStyle(color: Colors.white54, fontSize: 10),
             ),
-          );
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -4,19 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:me_chat/backend/api.dart';
+import 'package:me_chat/constants.dart';
 import 'package:me_chat/models/user_model.dart';
 import 'package:me_chat/screens/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, required this.user});
-  final UserData user;
+  const ProfileScreen({super.key});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool isLoading = false; // Track if the image is being uploaded
+  bool isLoading = false;
   String? _name;
   String? _about;
   final formKey = GlobalKey<FormState>();
@@ -28,7 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (ctx) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
         );
       }
     } catch (e) {
@@ -43,34 +43,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> updateProfileImage(File file) async {
-    setState(() {
-      isLoading = true; // Start loading
-    });
+    setState(() => isLoading = true);
 
     try {
-      print('🗑 Updating previous image...');
       await APIs.updateProfileImage(file);
+      final newImageUrl = APIs.getProfileImageUrl(currentUser.id!);
 
-      await APIs.update(widget.user.name!, widget.user.about!,
-          APIs.getProfileImageUrl(APIs.currentUser!.uid));
+      await APIs.update(currentUser.name!, currentUser.about!, newImageUrl);
+      currentUser.image = newImageUrl;
 
-      setState(() {
-        isLoading = false; // Stop loading
-      });
+      setState(() => isLoading = false);
     } catch (e) {
-      print('🔥 Error in picking or uploading image: $e');
-      setState(() {
-        isLoading = false; // Stop loading even if there's an error
-      });
+      debugPrint('Image Upload Error: $e');
+      setState(() => isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Profile Screen',
-            style: TextStyle(fontWeight: FontWeight.normal)),
+        centerTitle: false,
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('Profile Screen',
+            style:
+                TextStyle(fontWeight: FontWeight.normal, color: primaryColor)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
@@ -81,7 +80,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Profile Image
                   ClipRRect(
                     borderRadius: BorderRadius.circular(100),
                     child: Container(
@@ -94,14 +92,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: isLoading
                           ? const Center(
                               child: CircularProgressIndicator(
-                                color: Colors.black,
-                              ),
-                            )
+                                  color: Colors.black))
                           : Image.network(
-                              ('${widget.user.image}?t=${DateTime.now().millisecondsSinceEpoch}'),
+                              '${currentUser.image}?t=${DateTime.now().millisecondsSinceEpoch}',
                               fit: BoxFit.cover,
-                              loadingBuilder:
-                                  (context, child, loadingProgress) {
+                              loadingBuilder: (_, child, loadingProgress) {
                                 if (loadingProgress == null) return child;
                                 return Center(
                                   child: CircularProgressIndicator(
@@ -118,22 +113,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                               errorBuilder: (_, __, ___) =>
-                                  const Icon(Icons.error),
+                                  const Icon(Icons.error, color: Colors.red),
                             ),
                     ),
                   ),
-                  // Border Circle (placed behind so it doesn't block interaction)
                   Positioned.fill(
                     child: Container(
                       height: 150,
                       width: 150,
                       decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(100),
-                          border: Border.all(color: Colors.black, width: 2),
-                          color: Colors.transparent),
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: primaryColor, width: 3),
+                      ),
                     ),
                   ),
-                  // Edit Icon
                   Positioned(
                     bottom: 5,
                     right: 15,
@@ -142,24 +135,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 40,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(28),
-                        color: Colors.black,
+                        color: primaryColor,
                       ),
                       child: IconButton(
                         onPressed: () async {
-                          print('🟡 Edit button clicked');
-
-                          try {
-                            File? file = await pickImageFromGallery();
-                            print('📷 Picked file: ${file?.path}');
-
-                            if (file != null) {
-                              await updateProfileImage(file);
-                            } else {
-                              print('❌ No image picked');
-                            }
-                          } catch (e) {
-                            print('🔥 Error in picking or uploading image: $e');
-                          }
+                          File? file = await pickImageFromGallery();
+                          if (file != null) await updateProfileImage(file);
                         },
                         icon: const Icon(Icons.edit,
                             color: Colors.white, size: 20),
@@ -170,55 +151,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 20),
               Text(
-                widget.user.email ?? '',
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                currentUser.email ?? '',
+                style: const TextStyle(fontSize: 18, color: Colors.white),
               ),
               const SizedBox(height: 60),
               TextFormField(
-                initialValue: widget.user.name ?? '',
-                validator: (value) => (value == null || value.isEmpty)
-                    ? 'Please enter your name'
-                    : null,
+                initialValue: currentUser.name ?? '',
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Enter your name' : null,
                 onSaved: (newValue) => _name = newValue,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.person),
-                  label: const Text('Name'),
-                  hintText: 'Name',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.grey),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.black),
-                  ),
-                ),
+                style: const TextStyle(color: Colors.white),
+                decoration: inputDecoration('Name', Icons.person),
               ),
               const SizedBox(height: 20),
               TextFormField(
-                initialValue: widget.user.about ?? '',
-                validator: (value) => (value == null || value.isEmpty)
-                    ? 'Please enter about info'
-                    : null,
+                initialValue: currentUser.about ?? '',
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Enter about info' : null,
                 onSaved: (newValue) => _about = newValue,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.info_outline),
-                  label: const Text('About'),
-                  hintText: 'About',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.grey),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.black),
-                  ),
-                ),
+                style: const TextStyle(color: Colors.white),
+                decoration: inputDecoration('About', Icons.info_outline),
               ),
               const SizedBox(height: 50),
               ElevatedButton(
@@ -226,40 +178,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (formKey.currentState!.validate()) {
                     formKey.currentState!.save();
                     try {
-                      await APIs.update(_name!, _about!, widget.user.image!);
+                      await APIs.update(_name!, _about!, currentUser.image!);
+                      currentUser.name = _name!;
+                      currentUser.about = _about!;
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Update Successful!'),
-                            backgroundColor: Colors.black,
-                            duration: const Duration(seconds: 1),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                          successSnackBar('Profile updated!'),
                         );
                       }
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Update Failed!'),
-                            backgroundColor: Colors.red,
-                            duration: const Duration(seconds: 1),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                          errorSnackBar('Update failed!'),
                         );
                       }
                     }
                   }
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
                 child:
-                    const Text('Update', style: TextStyle(color: Colors.white)),
+                    const Text('Update', style: TextStyle(color: Colors.black)),
               ),
             ],
           ),
@@ -273,9 +211,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onPressed: signOut,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          child: Row(
+          child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
+            children: [
               Icon(Icons.logout, color: Colors.white, size: 18),
               SizedBox(width: 4),
               Text('Logout', style: TextStyle(color: Colors.white)),
@@ -285,4 +223,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  InputDecoration inputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      prefixIcon: Icon(icon, color: Colors.white70),
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white70),
+      hintText: label,
+      hintStyle: const TextStyle(color: Colors.white38),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.white24),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.white),
+      ),
+    );
+  }
+
+  SnackBar successSnackBar(String message) => SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      );
+
+  SnackBar errorSnackBar(String message) => SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      );
 }

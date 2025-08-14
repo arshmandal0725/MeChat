@@ -1,10 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:me_chat/backend/api.dart';
+import 'package:me_chat/constants.dart';
 import 'package:me_chat/models/user_model.dart';
-import 'package:me_chat/screens/all_users_screen.dart';
-import 'package:me_chat/screens/profile_screen.dart';
 import 'package:me_chat/widgets/chat_card.dart';
 import 'package:me_chat/widgets/search_texrField.dart';
 
@@ -16,46 +14,34 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool searchActivated = false;
+  String searchText = '';
+  List<UserData> filteredUsers = [];
+
   @override
   void initState() {
     super.initState();
-    _checkUser();
-    APIs.updateOnlineStatus(true);
+    filteredUsers = getFilteredUsers(); // initial filtered list
+
     SystemChannels.lifecycle.setMessageHandler(
       (message) {
-        print('Message : $message');
-
         if (message.toString().contains('pause')) {
-          APIs.updateOnlineStatus(false);
-        }
-
-        if (message.toString().contains('resume')) {
-          APIs.updateOnlineStatus(true);
+          // Handle offline status
+        } else if (message.toString().contains('resume')) {
+          // Handle online status
         }
         return Future.value(message);
       },
     );
   }
 
-  Future<void> _checkUser() async {
-    if (!await APIs.userExists()) {
-      await APIs.createUser();
-    }
-  }
-
-  List<UserData> onSearchUsers(String searchText) {
-    if (searchText.isEmpty) return users;
-    List<UserData> newUser = users
+  List<UserData> getFilteredUsers() {
+    return allUsers
         .where((u) =>
-            u.name!.toLowerCase().contains(searchText.trim().toLowerCase()))
+            u.name!.toLowerCase().contains(searchText.trim().toLowerCase()) &&
+            u.id != currentUser.id)
         .toList();
-    return newUser;
   }
-
-  List<UserData> users = [];
-  UserData? user;
-  bool searchActivated = false;
-  String searchText = '';
 
   @override
   Widget build(BuildContext context) {
@@ -66,90 +52,54 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       },
       child: Scaffold(
-        appBar: (searchActivated)
-            ? AppBar(
-                title: SearchTexrfield(onChanged: (String s) {
-                  searchText = s;
-                  onSearchUsers(searchText);
-                  setState(() {});
-                }),
-                actions: [
-                  IconButton(
-                      onPressed: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (ctx) => ProfileScreen(
-                                      user: user!,
-                                    )));
-                      },
-                      icon: Icon(Icons.more_vert))
-                ],
-              )
-            : AppBar(
-                title: Text('MeChat'),
-                actions: [
-                  IconButton(
-                      onPressed: () {
-                        setState(() {
-                          searchActivated = !searchActivated;
-                        });
-                      },
-                      icon: Icon(Icons.search)),
-                  IconButton(
-                      onPressed: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (ctx) => ProfileScreen(
-                                      user: user!,
-                                    )));
-                      },
-                      icon: Icon(Icons.more_vert))
-                ],
-              ),
-        backgroundColor: Colors.white,
-        body: StreamBuilder(
-            stream: APIs.firestore.collection('users').snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                final data = snapshot.data?.docs;
-                users.clear();
-                for (var i in data!) {
-                  UserData u = UserData(
-                      id: i.data()["id"],
-                      isOonline: i.data()["is_oonline"],
-                      createdAt: i.data()["created_at"],
-                      image: i.data()["image"],
-                      email: i.data()["email"],
-                      pushToken: i.data()["push_token"],
-                      about: i.data()["about"],
-                      lastActive: i.data()["last_active"],
-                      name: i.data()["name"]);
-
-                  if (u.id == APIs.currentUser!.uid) {
-                    user = u;
-                  } else {
-                    users.add(u);
-                  }
-                }
-              }
-              final filteredUsers = onSearchUsers(searchText);
-              return ListView.builder(
-                  itemCount: filteredUsers.length,
-                  itemBuilder: (ctx, index) {
-                    return UserChatCard(
-                      user: filteredUsers[index],
-                    );
-                  });
-            }),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {
-            Navigator.push(
-                context, MaterialPageRoute(builder: (_) => AllUsersScreen()));
-          },
-          child: Icon(Icons.add_comment),
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          iconTheme: IconThemeData(color: primaryColor),
+          title: searchActivated
+              ? SearchTexrfield(
+                  onChanged: (String s) {
+                    setState(() {
+                      searchText = s;
+                      filteredUsers = getFilteredUsers();
+                    });
+                  },
+                  textColor: primaryColor,
+                  borderColor: primaryColor,
+                )
+              : Text(
+                  'Chats',
+                  style: TextStyle(color: primaryColor),
+                ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.search, color: primaryColor),
+              onPressed: () {
+                setState(() {
+                  searchActivated = !searchActivated;
+                });
+              },
+            ),
+            IconButton(
+                icon: Icon(Icons.more_vert, color: primaryColor),
+                onPressed: () {}),
+          ],
         ),
+        body: filteredUsers.isEmpty
+            ? Center(
+                child: Text(
+                  'No users found',
+                  style: TextStyle(color: primaryColor.withOpacity(0.7)),
+                ),
+              )
+            : ListView.builder(
+                itemCount: filteredUsers.length,
+                itemBuilder: (ctx, index) {
+                  return UserChatCard(
+                    user: filteredUsers[index],
+                  );
+                },
+              ),
       ),
     );
   }

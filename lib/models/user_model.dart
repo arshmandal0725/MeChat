@@ -11,15 +11,15 @@ class UserData {
     required this.name,
   });
 
-  final String? id;
-  final bool? isOonline;
-  final String? createdAt;
-  final String? image;
-  final String? email;
-  final String? pushToken;
-  final String? about;
-  final String? lastActive;
-  final String? name;
+  String? id;
+  bool? isOonline;
+  String? createdAt;
+  String? image;
+  String? email;
+  String? pushToken;
+  String? about;
+  String? lastActive;
+  String? name;
 
   factory UserData.fromJson(Map<String, dynamic> json) {
     return UserData(
